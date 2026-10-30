@@ -315,6 +315,19 @@ details.tips .tip-item:first-of-type { margin-top: 12px; }
 details.tips .tip-item p { font-weight: 600; }
 details.tips .tip-item small { color: var(--acc); font-weight: 700; font-size: 12.5px; }
 
+/* ---------- salário dividido ---------- */
+.split2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.pd { display: grid; gap: 6px; align-content: start; padding: 14px; border-radius: 16px; background: var(--card-2); border: 0; text-align: left; min-width: 0; }
+.pd .label { display: flex; align-items: center; gap: 6px; }
+.pd b { font-size: 19px; font-weight: 800; letter-spacing: -.02em; }
+.pd small { font-size: 12.5px; color: var(--muted); font-weight: 600; }
+.pay-tag { display: inline-block; padding: 1px 7px; border-radius: 6px; background: var(--acc-soft); color: var(--acc); font-size: 11.5px; font-weight: 700; margin-left: 4px; }
+.dist-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+.dist-row b { display: block; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dist-row small { color: var(--muted); font-size: 12.5px; }
+.seg.mini button { padding: 7px 10px; font-size: 12.5px; }
+.split-fields { display: grid; gap: 12px; }
+
 /* ---------- ajustes ---------- */
 .set-group { padding: 4px 16px; }
 .set-group h3 { font-size: 12.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 800; padding: 14px 0 4px; }
@@ -627,7 +640,7 @@ function seed() {
   }
   return {
     v: 2, defaultPw: true, user: "familia",
-    settings: { income: 9800, reserve: 14500, reserveMonths: 6, lockMin: 5, exIncome: true },
+    settings: { income: 9800, reserve: 14500, reserveMonths: 6, lockMin: 5, exIncome: true, split: { on: true, sal: { amount: 6200, day: 5 }, adv: { amount: 3600, day: 20 } } },
     bills, pays, exps,
     budgets: { mercado: 1500, combustivel: 550, saude: 250, lazer: 300, educacao: 0, outros: 200 },
     goals: [
@@ -681,6 +694,47 @@ function essentials(m) {
 const pastMonths = (n = 12) => { const out = [], cur = ymOf(new Date()); for (let i = 1; i <= n; i++) { const m = addMonth(cur, -i); if (hasData(m)) out.push(m); } return out; };
 const paidOnTime = (b, m) => { const p = payOf(b, m); return p && p.date <= isoOf(dueDate(b, m)); };
 const fullyPaid = m => { const bs = billsFor(m); return bs.length > 0 && bs.every(b => payOf(b, m)); };
+
+/* ---------- salário dividido: cada conta sai do salário ou do adiantamento ---------- */
+const PAYS = { sal: "Salário", adv: "Adiantamento" };
+const splitOn = () => !!S.settings.split?.on;
+// Sem escolha manual, a conta vai para o pagamento que entrou mais recentemente antes do vencimento
+function suggestPayer(day) {
+  const a = S.settings.split.sal.day, c = S.settings.split.adv.day;
+  return (a <= c ? day >= a && day < c : day >= a || day < c) ? "sal" : "adv";
+}
+const payerOf = b => b.pay || suggestPayer(b.day);
+function splitTotals(m, pick = payerOf) {
+  const sp = S.settings.split, o = { sal: { in: sp.sal.amount, day: sp.sal.day, bills: 0, n: 0 }, adv: { in: sp.adv.amount, day: sp.adv.day, bills: 0, n: 0 } };
+  billsFor(m).forEach(b => { const k = pick(b); o[k].bills += billAmt(b, m); o[k].n++; });
+  return o;
+}
+function splitCard() {
+  if (!splitOn()) return "";
+  const o = splitTotals(month);
+  return `<div class="card"><div class="sec-head" style="margin-bottom:12px"><h3>Salário dividido</h3><button class="btn ghost sm" data-act="distribute">Organizar contas</button></div>
+    <div class="split2">${["adv", "sal"].map(k => { const x = o[k], left = x.in - x.bills; return `<button class="pd" data-act="distribute">
+      <span class="label">${PAYS[k]}</span><small style="margin-top:-6px">Cai dia ${x.day}</small>
+      <b class="num">${M(x.in, "n")}</b>
+      <span class="bar ${left < 0 ? "bad" : ""}"><i style="width:${Math.min(100, pct(x.bills, x.in) * 100).toFixed(1)}%"></i></span>
+      <small>${plural(x.n, "conta", "contas")}: ${M(x.bills, "n")}</small>
+      <small class="${left < 0 ? "bad" : "good"}">${left < 0 ? "Faltam" : "Sobram"} ${M(Math.abs(left), "n")}</small></button>`; }).join("")}</div></div>`;
+}
+function distributeForm() {
+  const bs = billsFor(month), pick = {};
+  bs.forEach(b => pick[b.id] = payerOf(b));
+  const summary = () => { const o = splitTotals(month, b => pick[b.id]); return ["adv", "sal"].map(k => { const l = o[k].in - o[k].bills; return `<div class="pd"><span class="label">${PAYS[k]}</span><small style="margin-top:-6px">Cai dia ${o[k].day}</small><small>Contas ${esc(money(o[k].bills))}</small><small class="${l < 0 ? "bad" : "good"}">${l < 0 ? "Faltam" : "Sobram"} ${esc(money(Math.abs(l)))}</small></div>`; }).join(""); };
+  sheet(`<h3>Organizar contas</h3><p class="sub">Escolham de qual pagamento sai cada conta. O app mostra se o dinheiro dá.</p>
+    <div class="split2" id="dSum">${summary()}</div>
+    <div style="margin-top:12px">${bs.map(b => `<div class="dist-row"><div><b>${esc(b.name)}</b><small>Vence dia ${b.day} · ${esc(money(b.amount))}</small></div>
+      <div class="seg mini" data-id="${b.id}"><button type="button" data-k="adv" class="${pick[b.id] === "adv" ? "on" : ""}">Adiant.</button><button type="button" data-k="sal" class="${pick[b.id] === "sal" ? "on" : ""}">Salário</button></div></div>`).join("") || `<p class="muted">Nenhuma conta neste mês.</p>`}</div>
+    <div class="actions" style="margin-top:14px"><button type="button" class="btn grow" id="dAuto">Sugerir pelo vencimento</button><button type="button" class="btn primary" id="dSave">Salvar</button></div>`, el => {
+    const paint = () => { el.querySelector("#dSum").innerHTML = summary(); el.querySelectorAll(".seg.mini").forEach(g => g.querySelectorAll("button").forEach(x => x.classList.toggle("on", x.dataset.k === pick[g.dataset.id]))); };
+    el.querySelectorAll(".seg.mini button").forEach(x => x.onclick = () => { pick[x.parentElement.dataset.id] = x.dataset.k; paint(); });
+    el.querySelector("#dAuto").onclick = () => { bs.forEach(b => pick[b.id] = suggestPayer(b.day)); paint(); };
+    el.querySelector("#dSave").onclick = () => { bs.forEach(b => b.pay = pick[b.id]); closeSheet(); commit("Contas organizadas por pagamento"); };
+  });
+}
 
 /* ---------- motivação: sequência, nota e conquistas ---------- */
 // Meses fechados seguidos com todas as contas pagas até o vencimento
@@ -918,6 +972,7 @@ function vHome() {
         </div>
         ${done ? `<div class="hero-done">${ic("check")} Mês quitado. Parabéns, família!</div>` : ""}
       </div>
+      ${splitCard()}
       ${stepsCard()}
       <div class="sec">
         <div class="sec-head"><h3>Próximas contas</h3><button class="btn ghost sm" data-act="nav" data-v="bills">Ver todas</button></div>
@@ -990,7 +1045,7 @@ function billRow(b, s) {
   const cls = { paid: "good", late: "bad", soon: "warn", open: "" }[s.k];
   return `<div class="row ${s.k}">
     ${catIc(b.cat)}
-    <button class="row-main" data-act="edit-bill" data-id="${b.id}"><b>${esc(b.name)}</b><small class="${cls}">${esc(s.t)}${b.rec ? "" : " · só este mês"}</small></button>
+    <button class="row-main" data-act="edit-bill" data-id="${b.id}"><b>${esc(b.name)}</b><small class="${cls}">${esc(s.t)}${b.rec ? "" : " · só este mês"}${splitOn() ? `<span class="pay-tag">${payerOf(b) === "sal" ? "Salário" : "Adiant."}</span>` : ""}</small></button>
     <span class="amt num">${M(billAmt(b, month), "n")}</span>
     <button class="check ${p ? "on" : ""}" data-act="${p ? "unpay" : "pay"}" data-id="${b.id}" aria-label="${p ? "Desmarcar pagamento de " : "Marcar como paga: "}${esc(b.name)}">${ic("check")}</button>
   </div>`;
@@ -1028,6 +1083,7 @@ function billForm(b) {
     </div>
     <div class="field"><label for="bCat">Categoria</label><select class="input" id="bCat">${Object.entries(CATS).map(([k, c]) => `<option value="${k}" ${b.cat === k ? "selected" : ""}>${c.n}</option>`).join("")}</select></div>
     <div class="field"><label>Repetição</label><div class="seg" id="bRec"><button type="button" class="${b.rec ? "on" : ""}" data-rec="1">Todo mês</button><button type="button" class="${b.rec ? "" : "on"}" data-rec="0">Só este mês</button></div></div>
+    ${splitOn() ? `<div class="field"><label for="bPay">Pagar com</label><select class="input" id="bPay"><option value="">Automático pelo vencimento</option>${Object.entries(PAYS).map(([k, n]) => `<option value="${k}" ${b.pay === k ? "selected" : ""}>${n} (dia ${S.settings.split[k].day})</option>`).join("")}</select></div>` : ""}
     <div class="field"><label for="bRem">Avisar</label><select class="input" id="bRem">${[1, 2, 3, 5, 7].map(n => `<option value="${n}" ${(b.remind ?? 3) === n ? "selected" : ""}>${plural(n, "dia", "dias")} antes</option>`).join("")}</select></div>
     <div class="err" id="bMsg"></div>
     <div class="actions">
@@ -1046,6 +1102,7 @@ function billForm(b) {
       if (!(amount >= 0)) return msg.textContent = "Informe o valor, por exemplo 129,90.";
       if (!(day >= 1 && day <= 31)) return msg.textContent = "O dia do vencimento vai de 1 a 31.";
       const data = { name, amount, day, cat: el.querySelector("#bCat").value, remind: +el.querySelector("#bRem").value, rec };
+      if (splitOn()) data.pay = el.querySelector("#bPay").value || undefined;
       if (isNew) S.bills.push({ id: uid(), ...data, note: "", start: month, end: null, month: rec ? null : month });
       else Object.assign(b, data, { month: rec ? null : month, ex: false, start: rec ? (b.start && b.start < month ? b.start : month) : b.start });
       closeSheet(); commit(isNew ? "Conta cadastrada. O app vai lembrar vocês." : "Conta atualizada");
@@ -1323,6 +1380,8 @@ function vSettings() {
     <div class="card set-group"><h3>Orçamento</h3>
       ${row("wallet", "Renda mensal", "Salários e outras entradas", `<span class="val num">${s.income ? esc(money(s.income)) : "Informar"}</span>`, "budget-settings")}
       ${row("piggy", "Reserva de emergência", `Meta: ${s.reserveMonths || 6} meses do essencial`, `<span class="val num">${esc(money(s.reserve || 0))}</span>`, "budget-settings")}
+      ${row("repeat", "Salário e adiantamento", splitOn() ? `Adiantamento dia ${s.split.adv.day} · salário dia ${s.split.sal.day}` : "Divida a renda e escolha de onde sai cada conta", splitOn() ? `<span class="val">Ativo</span>` : "", "budget-settings")}
+      ${splitOn() ? row("list", "Organizar contas por pagamento", "Quais contas saem de cada um", "", "distribute") : ""}
       ${row("target", "Limites de gastos", "Quanto gastar em cada categoria", "", "edit-budgets")}
     </div>
     <div class="card set-group"><h3>Segurança</h3>
@@ -1344,19 +1403,35 @@ function vSettings() {
   </section>`;
 }
 function budgetSettingsForm() {
-  const s = S.settings;
+  const s = S.settings, sp = s.split || { on: false, sal: { amount: 0, day: 5 }, adv: { amount: 0, day: 20 } };
+  let split = sp.on;
+  const dayIn = (id, v) => `<input class="input num" id="${id}" type="number" min="1" max="31" value="${v}">`;
   sheet(`<h3>Orçamento da família</h3><p class="sub">Usado na nota da família, na regra 50/30/20 e na reserva.</p>
   <form class="form" id="bsForm" novalidate>
-    <div class="field"><label for="sInc">Renda mensal da família</label><input class="input num secret-in" id="sInc" inputmode="decimal" value="${esc(fmtIn(s.income))}" placeholder="0,00" autofocus></div>
+    <div class="field"><label>Como vocês recebem?</label><div class="seg" id="bsMode"><button type="button" data-m="0" class="${split ? "" : "on"}">Uma vez no mês</button><button type="button" data-m="1" class="${split ? "on" : ""}">Salário + adiantamento</button></div></div>
+    <div class="field" id="oneBox" ${split ? "hidden" : ""}><label for="sInc">Renda mensal da família</label><input class="input num secret-in" id="sInc" inputmode="decimal" value="${esc(fmtIn(s.income))}" placeholder="0,00"></div>
+    <div class="split-fields" id="splitBox" ${split ? "" : "hidden"}>
+      <div class="two"><div class="field"><label for="sAdv">Adiantamento (R$)</label><input class="input num secret-in" id="sAdv" inputmode="decimal" value="${esc(fmtIn(sp.adv.amount))}" placeholder="0,00"></div><div class="field"><label for="sAdvD">Cai no dia</label>${dayIn("sAdvD", sp.adv.day)}</div></div>
+      <div class="two"><div class="field"><label for="sSal">Salário (R$)</label><input class="input num secret-in" id="sSal" inputmode="decimal" value="${esc(fmtIn(sp.sal.amount))}" placeholder="0,00"></div><div class="field"><label for="sSalD">Cai no dia</label>${dayIn("sSalD", sp.sal.day)}</div></div>
+      <small class="muted">Depois, em "Organizar contas", vocês escolhem quais contas saem de cada pagamento.</small>
+    </div>
     <div class="field"><label for="sRes">Reserva guardada hoje</label><input class="input num secret-in" id="sRes" inputmode="decimal" value="${esc(fmtIn(s.reserve))}" placeholder="0,00"></div>
     <div class="field"><label for="sResM">Meta da reserva</label><select class="input" id="sResM">${[3, 6, 9, 12].map(n => `<option value="${n}" ${s.reserveMonths === n ? "selected" : ""}>${n} meses do custo essencial</option>`).join("")}</select></div>
     <button class="btn primary block" type="submit">Salvar</button>
   </form>`, el => {
+    el.querySelectorAll("#bsMode button").forEach(x => x.onclick = () => {
+      split = x.dataset.m === "1";
+      el.querySelectorAll("#bsMode button").forEach(y => y.classList.toggle("on", y === x));
+      el.querySelector("#oneBox").hidden = split; el.querySelector("#splitBox").hidden = !split;
+    });
     el.querySelector("#bsForm").onsubmit = e => {
       e.preventDefault();
-      const inc = parseBRL(el.querySelector("#sInc").value), res = parseBRL(el.querySelector("#sRes").value);
-      s.income = inc > 0 ? inc : 0; s.reserve = res > 0 ? res : 0; s.exIncome = false; s.reserveMonths = +el.querySelector("#sResM").value;
-      closeSheet(); commit("Orçamento salvo");
+      const num = id => { const v = parseBRL(el.querySelector(id).value); return v > 0 ? v : 0; };
+      const day = id => clamp(parseInt(el.querySelector(id).value, 10) || 1, 1, 31);
+      s.split = { on: split, sal: { amount: num("#sSal"), day: day("#sSalD") }, adv: { amount: num("#sAdv"), day: day("#sAdvD") } };
+      s.income = split ? s.split.sal.amount + s.split.adv.amount : num("#sInc");
+      s.reserve = num("#sRes"); s.exIncome = false; s.reserveMonths = +el.querySelector("#sResM").value;
+      closeSheet(); commit(split ? "Pronto! Agora organizem as contas por pagamento." : "Orçamento salvo");
     };
   });
 }
@@ -1464,6 +1539,7 @@ document.addEventListener("click", e => {
     case "del-exp": { const x = S.exps.find(v => v.id === el.dataset.id); confirmBox("Apagar gasto?", `${x.desc || CATS[x.cat].n} · ${money(x.amount)}`, "Apagar", () => { S.exps = S.exps.filter(v => v !== x); commit("Gasto apagado"); }); break; }
     case "edit-budgets": budgetsForm(); break;
     case "budget-settings": budgetSettingsForm(); break;
+    case "distribute": distributeForm(); break;
     case "new-goal": goalForm(null); break;
     case "edit-goal": goalForm(goal()); break;
     case "goal-save": goalSaveForm(goal()); break;
@@ -1487,7 +1563,7 @@ document.addEventListener("click", e => {
       const exIds = new Set(S.bills.filter(b => b.ex).map(b => b.id));
       S.bills = S.bills.filter(b => !b.ex); S.exps = S.exps.filter(x => !x.ex); S.goals = S.goals.filter(g => !g.ex);
       Object.keys(S.pays).forEach(k => { if (exIds.has(k.split("|")[0])) delete S.pays[k]; });
-      if (S.settings.exIncome) { S.settings.income = 0; S.settings.reserve = 0; S.settings.exIncome = false; }
+      if (S.settings.exIncome) { S.settings.income = 0; S.settings.reserve = 0; S.settings.exIncome = false; S.settings.split = { on: false, sal: { amount: 0, day: 5 }, adv: { amount: 0, day: 20 } }; }
       S.ach = {};
       commit("Pronto! Agora é com vocês.");
     }, false); break;
