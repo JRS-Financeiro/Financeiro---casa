@@ -19,7 +19,9 @@ Página teste do app para organizar as contas da casa. É um arquivo único (`in
 - **Lembretes**: alertas no aparelho e um arquivo `.ics` para o calendário do celular, que avisa mesmo com o app fechado.
 - **Cópia de segurança** criptografada para exportar e restaurar.
 - **Modo privado**: os valores aparecem como `R$ *****` ao abrir. O olho ao lado de cada valor revela só ele; o olho do topo revela ou esconde todos. Ao sair do app, tudo volta a ficar escondido.
-- **Três temas**: Esmeralda, Safira e Pérola (em Ajustes → Aparência).
+- **Três temas**: Pérola (claro, padrão), Esmeralda e Safira (em Ajustes → Aparência).
+- **Lançamento rápido**: o botão **+** no centro da barra lança um gasto em segundos e mostra quanto resta no limite.
+- **Motivação**: nota da família (0 a 100) com a próxima ação para subir, sequência de meses sem atraso, 10 conquistas, sonhos da família com barra de progresso, primeiros passos guiados e comemoração ao quitar o mês.
 
 ## Segurança
 
