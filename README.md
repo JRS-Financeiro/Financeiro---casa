@@ -18,6 +18,8 @@ Página teste do app para organizar as contas da casa. É um arquivo único (`in
 - **Regra 50/30/20** e **reserva de emergência** calculadas sobre a renda da família.
 - **Lembretes**: alertas no aparelho e um arquivo `.ics` para o calendário do celular, que avisa mesmo com o app fechado.
 - **Cópia de segurança** criptografada para exportar e restaurar.
+- **Modo privado**: os valores aparecem como `R$ *****` ao abrir. O olho ao lado de cada valor revela só ele; o olho do topo revela ou esconde todos. Ao sair do app, tudo volta a ficar escondido.
+- **Três temas**: Esmeralda, Safira e Pérola (em Ajustes → Aparência).
 
 ## Segurança
 

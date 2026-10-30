@@ -332,6 +332,20 @@ tr.cur td { color: var(--gold-hi); }
 .fab { position: fixed; right: max(18px, env(safe-area-inset-right, 0px)); bottom: calc(88px + env(safe-area-inset-bottom, 0px)); z-index: 24; width: 58px; height: 58px; border-radius: 50%; border: 0; background: linear-gradient(180deg, var(--btn-a), var(--btn-b)); color: var(--btn-ink); display: grid; place-items: center; box-shadow: 0 12px 30px color-mix(in srgb, var(--gold) 28%, transparent); }
 .fab .ic { width: 26px; height: 26px; stroke-width: 2.2; }
 @media (min-width: 900px) { .fab { display: none; } }
+/* Modo privado */
+.peek { border: 0; background: transparent; padding: 0; margin: 0; font: inherit; text-align: left; color: inherit; letter-spacing: inherit; display: inline-flex; align-items: center; gap: .32em; cursor: pointer; border-radius: 6px; max-width: 100%; }
+.peek > span { white-space: nowrap; }
+.peek .stars { font-family: var(--body); font-weight: 700; letter-spacing: .08em; margin-left: .12em; }
+.kpi .v .stars { font-size: .72em; }
+.peek .ic { width: .9em; height: .9em; min-width: 13px; min-height: 13px; color: var(--muted); stroke-width: 2; }
+.peek:hover .ic, .peek.on .ic { color: var(--gold); }
+.big .peek .ic { width: .3em; height: .3em; margin-left: .15em; }
+.big .stars { font-size: .6em; letter-spacing: .1em; }
+.hero-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; position: relative; z-index: 1; }
+.iconbtn.sm { width: 34px; height: 34px; background: transparent; }
+.top-actions { display: flex; gap: 8px; }
+.iconbtn.on { color: var(--gold-hi); border-color: var(--line-strong); }
+.hide-vals .secret-in:not(:focus) { -webkit-text-security: disc; }
 /* Theme picker */
 .skins { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .skin { border: 1px solid var(--line); background: transparent; border-radius: 16px; padding: 8px 8px 12px; display: grid; gap: 4px; align-content: start; text-align: left; min-width: 0; transition: border-color .15s; }
@@ -377,8 +391,32 @@ const $app = document.getElementById("app");
 /* ---------- utilidades ---------- */
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const BRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
-const money = v => BRL.format(v || 0);
-const moneyShort = v => Math.abs(v) >= 10000 ? "R$ " + (v / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + " mil" : money(v);
+const fmtMoney = v => BRL.format(v || 0);
+const fmtShort = v => Math.abs(v) >= 10000 ? "R$ " + (v / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + " mil" : fmtMoney(v);
+const fmtBig = v => `<span class="cur">R$</span>${(v || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+/* ---------- modo privado: valores escondidos até tocar no olho ---------- */
+const MASK = "R$ *****";
+let hideVals = true;
+const applyHide = () => document.documentElement.classList.toggle("hide-vals", hideVals);
+// Texto simples (avisos, confirmações, dicas dos gráficos)
+const money = v => hideVals ? MASK : fmtMoney(v);
+// Valor na tela. Escondido, vira um botão: tocar revela só aquele valor.
+// f: "s" formato curto, "b" número grande do topo, "n" sem ícone (tabelas e listas densas)
+const peekBody = (v, f, show) => {
+  const big = f.includes("b");
+  const body = show ? (big ? fmtBig(v) : f.includes("s") ? fmtShort(v) : fmtMoney(v)) : `${big ? '<span class="cur">R$</span>' : "R$ "}<span class="stars">*****</span>`;
+  return `<span>${body}</span>` + (f.includes("n") ? "" : ic(show ? "eye-off" : "eye"));
+};
+const M = (v, f = "") => {
+  if (!hideVals) return f.includes("b") ? fmtBig(v) : f.includes("s") ? fmtShort(v) : fmtMoney(v);
+  return `<button type="button" class="peek" data-act="peek" data-v="${+v || 0}" data-f="${f}" aria-label="Mostrar valor">${peekBody(v, f, false)}</button>`;
+};
+function peek(el, show = !el.classList.contains("on")) {
+  el.classList.toggle("on", show);
+  el.innerHTML = peekBody(+el.dataset.v, el.dataset.f || "", show);
+  el.setAttribute("aria-label", show ? "Esconder valor" : "Mostrar valor");
+}
 const parseBRL = s => {
   s = String(s || "").replace(/[R$\s]/g, "");
   if (s.includes(",")) s = s.replace(/\./g, "").replace(",", ".");
@@ -427,6 +465,8 @@ const I = {
   wallet: '<path d="M20 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a2 2 0 0 1-2-2V5"/><path d="M17 14h.01"/>',
   chart: '<path d="M3 3v18h18"/><path d="M8 17V11M13 17V7M18 17v-4"/>',
   sliders: '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>',
+  eye: '<path d="M1.5 12S5.5 4.5 12 4.5 22.5 12 22.5 12 18.5 19.5 12 19.5 1.5 12 1.5 12z"/><circle cx="12" cy="12" r="3"/>',
+  "eye-off": '<path d="M10 4.7a10 10 0 0 1 2-.2c6.5 0 10.5 7.5 10.5 7.5a18 18 0 0 1-2.6 3.5M6.6 6.6C3.4 8.6 1.5 12 1.5 12s4 7.5 10.5 7.5a10 10 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2"/><path d="m2 2 20 20"/>',
   lock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
   check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
@@ -660,6 +700,7 @@ function download(name, text, type) {
    ===================================================================== */
 function renderLock(msg = "") {
   S = null; K = null; SALT = null; closeSheet();
+  hideVals = true; applyHide();
   const first = !store.get(VAULT_KEY);
   $app.innerHTML = `
   <main class="lock">
@@ -727,7 +768,10 @@ function lockNow(msg) { closeSheet(); renderLock(msg); }
 ["pointerdown", "keydown", "touchstart"].forEach(ev => document.addEventListener(ev, () => lastActive = Date.now(), { passive: true }));
 setInterval(() => { if (S && Date.now() - lastActive > (S.settings.lockMin || 5) * 60000) lockNow("Bloqueado por inatividade."); }, 15000);
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden) hiddenAt = Date.now();
+  if (document.hidden) {
+    hiddenAt = Date.now();
+    if (S && !hideVals) { hideVals = true; applyHide(); closeSheet(); rerender(); }
+  }
   else if (S && hiddenAt && Date.now() - hiddenAt > (S.settings.lockMin || 5) * 60000) lockNow("Bloqueado por inatividade.");
 });
 
@@ -755,7 +799,10 @@ function renderApp() {
           <button data-act="month" data-d="-1" aria-label="Mês anterior">${ic("left")}</button>
           <span class="num">${esc(monthName(month))}</span>
           <button data-act="month" data-d="1" aria-label="Próximo mês">${ic("right")}</button></div>` : ""}
-        <button class="iconbtn" data-act="lock" aria-label="Bloquear o app">${ic("lock")}</button>
+        <div class="top-actions">
+          <button class="iconbtn ${hideVals ? "" : "on"}" data-act="toggle-vals" aria-pressed="${!hideVals}" aria-label="${hideVals ? "Mostrar todos os valores" : "Esconder todos os valores"}" title="${hideVals ? "Mostrar todos os valores" : "Esconder todos os valores"}">${ic(hideVals ? "eye" : "eye-off")}</button>
+          <button class="iconbtn" data-act="lock" aria-label="Bloquear o app">${ic("lock")}</button>
+        </div>
       </header>
       <main id="view">${VIEWS[view]()}</main>
     </div>
@@ -789,11 +836,11 @@ function vHome() {
   return `<section class="view">
     ${defaultPwBanner()}${exampleBanner()}
     <div class="card hero">
-      <div class="eyebrow">Contas de ${esc(monthName(month, { month: "long" }))}</div>
-      <div class="big num"><span class="cur">R$</span>${esc(t.bills.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}</div>
+      <div class="hero-head"><div class="eyebrow">Contas de ${esc(monthName(month, { month: "long" }))}</div>${hideVals ? `<button class="iconbtn sm" data-act="peek-card" aria-label="Mostrar valores deste quadro">${ic("eye")}</button>` : ""}</div>
+      <div class="big num">${M(t.bills, "b")}</div>
       <div class="split">
-        <div><span class="lbl"><i class="dot" style="background:var(--good)"></i>Já pagas</span><span class="val num">${money(t.paid)}</span></div>
-        <div><span class="lbl"><i class="dot" style="background:var(--gold)"></i>Falta pagar</span><span class="val num">${money(t.open)}</span></div>
+        <div><span class="lbl"><i class="dot" style="background:var(--good)"></i>Já pagas</span><span class="val num">${M(t.paid)}</span></div>
+        <div><span class="lbl"><i class="dot" style="background:var(--gold)"></i>Falta pagar</span><span class="val num">${M(t.open)}</span></div>
       </div>
       <div class="bar"><i style="width:${(pct(t.paid, t.bills) * 100).toFixed(1)}%"></i></div>
       <small class="muted num">${t.nPaid} de ${t.n} contas pagas · ${Math.round(pct(t.paid, t.bills) * 100)}% quitado</small>
@@ -802,14 +849,14 @@ function vHome() {
     ${attention.length ? `<div class="list" aria-label="Contas que pedem atenção">
       ${attention.map(({ b, s }) => `<div class="alert ${s.k}" style="--c:${s.k === "late" ? "var(--bad)" : "var(--warn)"}">
         ${ic(s.k === "late" ? "alert" : "clock")}
-        <div><b>${esc(b.name)}</b> · <span class="num">${money(billAmt(b, month))}</span><small>${esc(s.t)} · dia ${b.day}</small></div>
+        <div><b>${esc(b.name)}</b> · <span class="num">${M(billAmt(b, month))}</span><small>${esc(s.t)} · dia ${b.day}</small></div>
         <button class="btn sm" data-act="pay" data-id="${b.id}">${ic("check")} Paguei</button></div>`).join("")}
     </div>` : ""}
 
     <div class="kpis">
-      <div class="card kpi"><span class="eyebrow">Dia a dia</span><span class="v num">${moneyShort(t.exp)}</span><span class="s">Mercado, combustível e outros</span></div>
-      <div class="card kpi"><span class="eyebrow">Renda do mês</span><span class="v num">${inc ? moneyShort(inc) : "—"}</span><span class="s">${inc ? "Informada em Ajustes" : `<button class="btn sm" data-act="nav" data-v="settings">Informar renda</button>`}</span></div>
-      <div class="card kpi"><span class="eyebrow">Sobra prevista</span><span class="v num" style="color:${left >= 0 ? "var(--good)" : "var(--bad)"}">${inc ? moneyShort(left) : "—"}</span><span class="s">Renda menos contas e gastos</span></div>
+      <div class="card kpi"><span class="eyebrow">Dia a dia</span><span class="v num">${M(t.exp, "s")}</span><span class="s">Mercado, combustível e outros</span></div>
+      <div class="card kpi"><span class="eyebrow">Renda do mês</span><span class="v num">${inc ? M(inc, "s") : "—"}</span><span class="s">${inc ? "Informada em Ajustes" : `<button class="btn sm" data-act="nav" data-v="settings">Informar renda</button>`}</span></div>
+      <div class="card kpi"><span class="eyebrow">Sobra prevista</span><span class="v num" style="color:${left >= 0 ? "var(--good)" : "var(--bad)"}">${inc ? M(left, "s") : "—"}</span><span class="s">Renda menos contas e gastos</span></div>
       <div class="card kpi"><span class="eyebrow">Taxa de poupança</span><span class="v num" style="color:${rate >= .2 ? "var(--good)" : rate >= .1 ? "var(--warn)" : "var(--bad)"}">${inc ? Math.round(rate * 100) + "%" : "—"}</span><span class="s">Meta: 20% ou mais</span></div>
     </div>
 
@@ -825,9 +872,9 @@ function vHome() {
       <div class="card">
         <div class="card-head"><h3>Reserva de emergência</h3><span class="eyebrow">Meta: ${S.settings.reserveMonths || 6} meses</span></div>
         ${ess ? `<div style="display:grid;gap:10px">
-          <div class="kpi" style="padding:0"><span class="v num">${money(rv)}</span><span class="s num">de ${money(goal)} · cobre ${(rv / ess).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} meses do essencial</span></div>
+          <div class="kpi" style="padding:0"><span class="v num">${M(rv)}</span><span class="s num">de ${M(goal, "n")} · cobre ${(rv / ess).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} meses do essencial</span></div>
           <div class="bar gold"><i style="width:${Math.min(100, pct(rv, goal) * 100).toFixed(1)}%"></i></div>
-          <small class="muted">Custo essencial médio: <span class="num">${money(ess)}</span>/mês. ${rv >= goal ? "Meta atingida. Agora é hora de investir para os sonhos da família." : `Faltam <span class="num">${money(goal - rv)}</span>. Guardar ${money(Math.ceil((goal - rv) / 12))} por mês completa em 1 ano.`}</small>
+          <small class="muted">Custo essencial médio: <span class="num">${M(ess, "n")}</span>/mês. ${rv >= goal ? "Meta atingida. Agora é hora de investir para os sonhos da família." : `Faltam <span class="num">${M(goal - rv, "n")}</span>. Guardar ${M(Math.ceil((goal - rv) / 12), "n")} por mês completa em 1 ano.`}</small>
           <button class="btn sm" data-act="edit-reserve" style="justify-self:start">${ic("piggy")} Atualizar valor guardado</button>
         </div>` : `<p class="muted">Cadastre suas contas para calcular a meta.</p>`}
       </div>
@@ -842,7 +889,7 @@ function vHome() {
 function ruleRow(name, hint, v, target, color, amount, overIsBad) {
   const over = overIsBad ? v > target : v < target;
   return `<div class="rule-row">
-    <div class="top-line"><span><b>${name}</b> <small class="muted">${hint}</small></span><span class="num"><b style="color:${over ? "var(--warn)" : "var(--fg)"}">${Math.round(v * 100)}%</b> <small class="muted">· meta ${Math.round(target * 100)}% · ${money(amount)}</small></span></div>
+    <div class="top-line"><span><b>${name}</b> <small class="muted">${hint}</small></span><span class="num"><b style="color:${over ? "var(--warn)" : "var(--fg)"}">${Math.round(v * 100)}%</b> <small class="muted">· meta ${Math.round(target * 100)}% · ${M(amount, "n")}</small></span></div>
     <div class="bar"><i style="width:${Math.min(100, v * 100).toFixed(1)}%;background:${color}"></i><span class="target" style="left:${target * 100}%" title="Meta"></span></div>
   </div>`;
 }
@@ -887,9 +934,9 @@ function vBills() {
     <div class="view-head"><div><span class="eyebrow">Contas fixas e lembretes</span><h2>Contas do mês</h2></div>
       <button class="btn primary only-desk" data-act="new-bill">${ic("plus")} Nova conta</button></div>
     <div class="kpis">
-      <div class="card kpi"><span class="eyebrow">Total</span><span class="v num">${moneyShort(t.bills)}</span><span class="s">${nContas(t.n)}</span></div>
-      <div class="card kpi"><span class="eyebrow">Pagas</span><span class="v num" style="color:var(--good)">${moneyShort(t.paid)}</span><span class="s">${nContas(t.nPaid)}</span></div>
-      <div class="card kpi"><span class="eyebrow">Falta pagar</span><span class="v num" style="color:var(--gold-hi)">${moneyShort(t.open)}</span><span class="s">${nContas(t.n - t.nPaid)}</span></div>
+      <div class="card kpi"><span class="eyebrow">Total</span><span class="v num">${M(t.bills, "s")}</span><span class="s">${nContas(t.n)}</span></div>
+      <div class="card kpi"><span class="eyebrow">Pagas</span><span class="v num" style="color:var(--good)">${M(t.paid, "s")}</span><span class="s">${nContas(t.nPaid)}</span></div>
+      <div class="card kpi"><span class="eyebrow">Falta pagar</span><span class="v num" style="color:var(--gold-hi)">${M(t.open, "s")}</span><span class="s">${nContas(t.n - t.nPaid)}</span></div>
       <div class="card kpi"><span class="eyebrow">Atrasadas</span><span class="v num" style="color:${cnt("late") ? "var(--bad)" : "var(--fg)"}">${cnt("late")}</span><span class="s">${cnt("late") ? "Pague o quanto antes" : "Nenhuma"}</span></div>
     </div>
     <div class="chips" role="tablist">
@@ -907,7 +954,7 @@ function billRow(b, s) {
   return `<div class="row ${s.k}">
     ${catIc(b.cat)}
     <button class="row-main" data-act="edit-bill" data-id="${b.id}"><b>${esc(b.name)}</b><small>${esc(CATS[b.cat]?.n || "")} · ${p ? "paga em " + p.date.split("-").reverse().slice(0, 2).join("/") : `vence dia ${b.day} (${d})`}${b.rec ? "" : " · avulsa"}</small></button>
-    <div class="row-end"><span class="amt num">${money(billAmt(b, month))}</span><span class="pill ${s.k}">${esc(s.t)}</span></div>
+    <div class="row-end"><span class="amt num">${M(billAmt(b, month))}</span><span class="pill ${s.k}">${esc(s.t)}</span></div>
     <button class="check ${p ? "on" : ""}" data-act="${p ? "unpay" : "pay"}" data-id="${b.id}" aria-label="${p ? "Desmarcar pagamento de " : "Marcar como paga: "}${esc(b.name)}">${ic("check")}</button>
   </div>`;
 }
@@ -918,7 +965,7 @@ function billForm(b) {
   <form class="form" id="billForm" novalidate>
     <div class="field"><label for="bName">Nome da conta</label><input class="input" id="bName" maxlength="60" value="${esc(b.name)}" placeholder="Ex.: Energia elétrica" required></div>
     <div class="two">
-      <div class="field"><label for="bAmt">Valor (R$)</label><input class="input num" id="bAmt" inputmode="decimal" value="${esc(fmtIn(b.amount))}" placeholder="0,00"></div>
+      <div class="field"><label for="bAmt">Valor (R$)</label><input class="input num secret-in" id="bAmt" inputmode="decimal" value="${esc(fmtIn(b.amount))}" placeholder="0,00"></div>
       <div class="field"><label for="bDay">Dia do vencimento</label><input class="input num" id="bDay" type="number" min="1" max="31" value="${b.day}"></div>
     </div>
     <div class="field"><label for="bCat">Categoria</label><select class="input" id="bCat">${Object.entries(CATS).map(([k, c]) => `<option value="${k}" ${b.cat === k ? "selected" : ""}>${c.n}</option>`).join("")}</select></div>
@@ -964,7 +1011,7 @@ function payForm(b) {
   sheet(`<h3>Registrar pagamento</h3><p class="muted" style="margin:0 0 16px">${esc(b.name)} · ${esc(monthName(month))}</p>
   <form class="form" id="payForm" novalidate>
     <div class="two">
-      <div class="field"><label for="pAmt">Valor pago (R$)</label><input class="input num" id="pAmt" inputmode="decimal" value="${esc(fmtIn(b.amount))}"></div>
+      <div class="field"><label for="pAmt">Valor pago (R$)</label><input class="input num secret-in" id="pAmt" inputmode="decimal" value="${esc(fmtIn(b.amount))}"></div>
       <div class="field"><label for="pDate">Data do pagamento</label><input class="input num" id="pDate" type="date" value="${def}"></div>
     </div>
     <small class="muted">Contas como luz e água mudam todo mês. Ajuste o valor se precisar.</small>
@@ -987,7 +1034,7 @@ function vExps() {
   const byDay = {}; list.forEach(e => (byDay[e.date] = byDay[e.date] || []).push(e));
   const defDate = month === ymOf(new Date()) ? isoOf(new Date()) : month + "-01";
   return `<section class="view">
-    <div class="view-head"><div><span class="eyebrow">Mercado, gasolina e afins</span><h2>Gastos do dia a dia</h2></div><span class="serif num" style="font-size:28px">${money(tot)}</span></div>
+    <div class="view-head"><div><span class="eyebrow">Mercado, gasolina e afins</span><h2>Gastos do dia a dia</h2></div><span class="serif num" style="font-size:28px">${M(tot)}</span></div>
     <div class="grid g2">
       <form class="card form" id="expForm" novalidate>
         <div class="card-head" style="margin:0"><h3>Lançar gasto</h3><span class="eyebrow">Leva 5 segundos</span></div>
@@ -1004,8 +1051,8 @@ function vExps() {
         <div class="card-head"><h3>Limites por categoria</h3><button class="btn sm" data-act="edit-budgets">Ajustar limites</button></div>
         ${EXP_CATS.filter(k => S.budgets[k] || list.some(e => e.cat === k)).map(k => {
           const sp = sum(list.filter(e => e.cat === k).map(e => e.amount)), lim = S.budgets[k] || 0, p = pct(sp, lim);
-          return `<div class="env"><div class="line1"><span>${catIc(k)}<b>${CATS[k].n}</b></span><span class="num"><b>${money(sp)}</b> <small>/ ${lim ? money(lim) : "sem limite"}</small></span></div>
-            ${lim ? `<div class="bar ${p >= 1 ? "bad" : p >= .8 ? "warn" : ""}"><i style="width:${Math.min(100, p * 100).toFixed(1)}%"></i></div><small class="num">${p >= 1 ? `Passou ${money(sp - lim)} do limite` : `Restam ${money(lim - sp)}`}</small>` : ""}</div>`;
+          return `<div class="env"><div class="line1"><span>${catIc(k)}<b>${CATS[k].n}</b></span><span class="num"><b>${M(sp, "n")}</b> <small>/ ${lim ? M(lim, "n") : "sem limite"}</small></span></div>
+            ${lim ? `<div class="bar ${p >= 1 ? "bad" : p >= .8 ? "warn" : ""}"><i style="width:${Math.min(100, p * 100).toFixed(1)}%"></i></div><small class="num">${p >= 1 ? `Passou ${M(sp - lim, "n")} do limite` : `Restam ${M(lim - sp, "n")}`}</small>` : ""}</div>`;
         }).join("") || `<p class="muted">Defina limites para acompanhar cada categoria.</p>`}
       </div>
     </div>
@@ -1013,14 +1060,14 @@ function vExps() {
       <div class="card-head"><h3>Lançamentos de ${esc(monthName(month, { month: "long" }))}</h3><span class="muted num">${list.length} itens</span></div>
       ${list.length ? `<div class="list">${Object.keys(byDay).map(d => `<div class="day-head">${esc(new Date(d + "T12:00").toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" }))}</div>
         ${byDay[d].map(e => `<div class="row exp">${catIc(e.cat)}<div class="row-main"><b>${esc(e.desc || CATS[e.cat].n)}</b><small>${esc(CATS[e.cat].n)}${e.ex ? ' · <span class="pill ex">exemplo</span>' : ""}</small></div>
-          <span class="amt num" style="font-weight:700">${money(e.amount)}</span><button class="xbtn" data-act="del-exp" data-id="${e.id}" aria-label="Apagar gasto">${ic("x")}</button></div>`).join("")}`).join("")}</div>`
+          <span class="amt num" style="font-weight:700">${M(e.amount)}</span><button class="xbtn" data-act="del-exp" data-id="${e.id}" aria-label="Apagar gasto">${ic("x")}</button></div>`).join("")}`).join("")}</div>`
         : `<div class="empty">Nenhum gasto lançado neste mês. Use o formulário acima a cada compra.</div>`}
     </div>
   </section>`;
 }
 function budgetsForm() {
   sheet(`<h3>Limites mensais</h3><p class="muted" style="margin:0 0 16px">Quanto a família combina gastar por mês em cada categoria. Deixe vazio para não ter limite.</p>
-  <form class="form" id="budForm">${EXP_CATS.map(k => `<div class="field"><label for="bud_${k}">${CATS[k].n}</label><input class="input num" id="bud_${k}" inputmode="decimal" value="${esc(fmtIn(S.budgets[k] || 0))}" placeholder="Sem limite"></div>`).join("")}
+  <form class="form" id="budForm">${EXP_CATS.map(k => `<div class="field"><label for="bud_${k}">${CATS[k].n}</label><input class="input num secret-in" id="bud_${k}" inputmode="decimal" value="${esc(fmtIn(S.budgets[k] || 0))}" placeholder="Sem limite"></div>`).join("")}
   <div class="actions"><button type="button" class="btn" data-act="close">Cancelar</button><button class="btn primary" type="submit">Salvar limites</button></div></form>`, el => {
     el.querySelector("#budForm").onsubmit = e => {
       e.preventDefault();
@@ -1040,7 +1087,7 @@ function vReports() {
     <div class="view-head"><div><span class="eyebrow">Histórico e gráficos</span><h2>Análises</h2></div></div>
     <div class="grid g2">
       <div class="card"><div class="card-head"><h3>Para onde foi o dinheiro</h3><span class="eyebrow">${esc(monthName(month, { month: "long" }))}</span></div>
-        ${total ? `<div class="donut-wrap">${donut(entries, total)}<div class="legend">${entries.map(([k, v]) => `<div><i class="dot" style="background:${CATS[k]?.c}"></i><span class="n">${esc(CATS[k]?.n || k)}</span><span class="num">${money(v)}</span><span class="p num">${Math.round(v / total * 100)}%</span></div>`).join("")}</div></div>` : `<div class="empty">Sem lançamentos neste mês.</div>`}
+        ${total ? `<div class="donut-wrap">${donut(entries, total)}<div class="legend">${entries.map(([k, v]) => `<div><i class="dot" style="background:${CATS[k]?.c}"></i><span class="n">${esc(CATS[k]?.n || k)}</span><span class="num">${M(v, "n")}</span><span class="p num">${Math.round(v / total * 100)}%</span></div>`).join("")}</div></div>` : `<div class="empty">Sem lançamentos neste mês.</div>`}
       </div>
       <div class="card"><div class="card-head"><h3>Últimos 6 meses</h3>
         <span class="chips" style="gap:12px;font-size:12.5px"><span><i class="dot" style="background:var(--gold)"></i> Contas</span><span><i class="dot" style="background:var(--good)"></i> Dia a dia</span>${S.settings.income ? `<span><i class="dot" style="background:var(--fg);opacity:.6"></i> Renda</span>` : ""}</span></div>
@@ -1049,7 +1096,7 @@ function vReports() {
     </div>
     <div class="card"><div class="card-head"><h3>Histórico mês a mês</h3><span class="muted">Toque num mês para abrir</span></div>
       <div class="table-wrap"><table class="num"><thead><tr><th>Mês</th><th>Contas</th><th>Pagas</th><th>Dia a dia</th><th>Total</th>${S.settings.income ? "<th>Sobra</th>" : ""}</tr></thead><tbody>
-      ${hist.map(m => { const t = totals(m), l = (S.settings.income || 0) - t.spent; return `<tr class="${m === month ? "cur" : ""}"><td><button class="chip" data-act="goto" data-m="${m}" style="padding:4px 10px">${esc(monthName(m))}</button></td><td>${money(t.bills)}</td><td>${money(t.paid)}</td><td>${money(t.exp)}</td><td><b>${money(t.spent)}</b></td>${S.settings.income ? `<td style="color:${l >= 0 ? "var(--good)" : "var(--bad)"}">${money(l)}</td>` : ""}</tr>`; }).join("") || `<tr><td colspan="6" class="muted">Sem histórico ainda.</td></tr>`}
+      ${hist.map(m => { const t = totals(m), l = (S.settings.income || 0) - t.spent; return `<tr class="${m === month ? "cur" : ""}"><td><button class="chip" data-act="goto" data-m="${m}" style="padding:4px 10px">${esc(monthName(m))}</button></td><td>${M(t.bills, "n")}</td><td>${M(t.paid, "n")}</td><td>${M(t.exp, "n")}</td><td><b>${M(t.spent, "n")}</b></td>${S.settings.income ? `<td style="color:${l >= 0 ? "var(--good)" : "var(--bad)"}">${M(l, "n")}</td>` : ""}</tr>`; }).join("") || `<tr><td colspan="6" class="muted">Sem histórico ainda.</td></tr>`}
       </tbody></table></div>
     </div>
     <div class="card"><div class="card-head"><h3>Princípios da casa</h3><span class="eyebrow">O que os especialistas ensinam</span></div>
@@ -1063,7 +1110,7 @@ function donut(entries, total) {
   return `<svg viewBox="0 0 200 200" role="img" aria-label="Gastos por categoria" style="width:100%;max-width:210px">
     <circle r="${R}" cx="100" cy="100" fill="none" stroke="var(--track)" stroke-width="22"/>${segs}
     <text x="100" y="94" text-anchor="middle" fill="var(--muted)" font-size="11" font-family="var(--body)" letter-spacing="1.5">TOTAL</text>
-    <text x="100" y="120" text-anchor="middle" fill="var(--fg)" font-size="${total >= 10000 ? 22 : 25}" font-weight="600" font-family="var(--display)">${esc(money(total).replace(/,\d\d$/, ""))}</text></svg>`;
+    <text x="100" y="120" text-anchor="middle" fill="var(--fg)" font-size="${total >= 10000 ? 22 : 25}" font-weight="600" font-family="${hideVals ? "var(--body)" : "var(--display)"}">${hideVals ? MASK : esc(fmtMoney(total).replace(/,\d\d$/, ""))}</text></svg>`;
 }
 function bars(months) {
   const data = months.map(m => { const t = totals(m); return { m, b: t.bills, e: t.exp }; });
@@ -1073,13 +1120,13 @@ function bars(months) {
   const top = Math.ceil(max * 1.05 / step) * step;
   const W = 520, H = 250, L = 52, Rr = 10, T = 14, B = 34, cw = (W - L - Rr) / data.length, bw = Math.min(42, cw * .52);
   const y = v => T + (H - T - B) * (1 - v / top);
-  let grid = ""; for (let v = 0; v <= top; v += step) grid += `<line x1="${L}" x2="${W - Rr}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"/><text x="${L - 8}" y="${y(v) + 4}" text-anchor="end" fill="var(--faint)" font-size="11" font-family="var(--body)">${v >= 1000 ? (v / 1000) + " mil" : v}</text>`;
+  let grid = ""; for (let v = 0; v <= top; v += step) grid += `<line x1="${L}" x2="${W - Rr}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"/><text x="${L - 8}" y="${y(v) + 4}" text-anchor="end" fill="var(--faint)" font-size="11" font-family="var(--body)">${hideVals ? "" : v >= 1000 ? (v / 1000) + " mil" : v}</text>`;
   const cols = data.map((d, i) => {
     const x = L + cw * i + (cw - bw) / 2, cur = d.m === month;
     const hb = y(0) - y(d.b), he = y(0) - y(d.e);
     return `<g opacity="${cur ? 1 : .78}"><rect x="${x}" y="${y(d.b)}" width="${bw}" height="${Math.max(0, hb)}" fill="var(--gold)" rx="3"><title>Contas: ${money(d.b)}</title></rect>
       <rect x="${x}" y="${y(d.b + d.e)}" width="${bw}" height="${Math.max(0, he)}" fill="var(--good)" rx="3"><title>Dia a dia: ${money(d.e)}</title></rect>
-      ${d.b + d.e ? `<text x="${x + bw / 2}" y="${y(d.b + d.e) - 6}" text-anchor="middle" fill="${cur ? "var(--gold-hi)" : "var(--muted)"}" font-size="10.5" font-family="var(--body)" font-weight="600">${((d.b + d.e) / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}k</text>` : ""}
+      ${d.b + d.e && !hideVals ? `<text x="${x + bw / 2}" y="${y(d.b + d.e) - 6}" text-anchor="middle" fill="${cur ? "var(--gold-hi)" : "var(--muted)"}" font-size="10.5" font-family="var(--body)" font-weight="600">${((d.b + d.e) / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}k</text>` : ""}
       <text x="${x + bw / 2}" y="${H - 12}" text-anchor="middle" fill="${cur ? "var(--gold-hi)" : "var(--muted)"}" font-size="12" font-family="var(--body)" font-weight="${cur ? 700 : 500}">${monthShort(d.m)}</text></g>`;
   }).join("");
   const incLine = inc ? `<line x1="${L}" x2="${W - Rr}" y1="${y(inc)}" y2="${y(inc)}" stroke="var(--fg)" stroke-opacity=".55" stroke-dasharray="5 5"/>` : "";
@@ -1102,8 +1149,8 @@ function vSettings() {
     </div>
     <div class="grid g2">
       <div class="card"><h3>Orçamento da família</h3>
-        <div class="set-row"><div><b>Renda mensal</b><small>Soma dos salários e outras entradas</small></div><input class="input num" id="sInc" inputmode="decimal" value="${esc(fmtIn(s.income))}" placeholder="0,00"></div>
-        <div class="set-row"><div><b>Reserva guardada hoje</b><small>Quanto já existe para emergências</small></div><input class="input num" id="sRes" inputmode="decimal" value="${esc(fmtIn(s.reserve))}" placeholder="0,00"></div>
+        <div class="set-row"><div><b>Renda mensal</b><small>Soma dos salários e outras entradas</small></div><input class="input num secret-in" id="sInc" inputmode="decimal" value="${esc(fmtIn(s.income))}" placeholder="0,00"></div>
+        <div class="set-row"><div><b>Reserva guardada hoje</b><small>Quanto já existe para emergências</small></div><input class="input num secret-in" id="sRes" inputmode="decimal" value="${esc(fmtIn(s.reserve))}" placeholder="0,00"></div>
         <div class="set-row"><div><b>Meta da reserva</b><small>Meses de custo essencial</small></div><select class="input" id="sResM">${[3, 6, 9, 12].map(n => `<option value="${n}" ${s.reserveMonths === n ? "selected" : ""}>${n} meses</option>`).join("")}</select></div>
         <button class="btn primary" data-act="save-settings" style="margin-top:8px">Salvar</button>
       </div>
@@ -1160,7 +1207,7 @@ function changePwForm() {
 }
 function reserveForm() {
   sheet(`<h3>Reserva de emergência</h3><p class="muted" style="margin:0 0 16px">Quanto a família tem guardado hoje em aplicações de resgate imediato.</p>
-  <form class="form" id="resForm"><div class="field"><label for="rAmt">Valor guardado (R$)</label><input class="input amount-in num" id="rAmt" inputmode="decimal" value="${esc(fmtIn(S.settings.reserve))}"></div>
+  <form class="form" id="resForm"><div class="field"><label for="rAmt">Valor guardado (R$)</label><input class="input amount-in num secret-in" id="rAmt" inputmode="decimal" value="${esc(fmtIn(S.settings.reserve))}"></div>
   <div class="actions"><button type="button" class="btn" data-act="close">Cancelar</button><button class="btn primary" type="submit">Salvar</button></div></form>`, el => {
     el.querySelector("#resForm").onsubmit = e => { e.preventDefault(); const v = parseBRL(el.querySelector("#rAmt").value); S.settings.reserve = v > 0 ? v : 0; save(); closeSheet(); rerender(); toast("Reserva atualizada"); };
   });
@@ -1240,6 +1287,14 @@ document.addEventListener("click", e => {
       S.settings.reserveMonths = +document.getElementById("sResM").value; save(); rerender(); toast("Orçamento salvo"); break;
     }
     case "change-pw": changePwForm(); break;
+    case "peek": peek(el); break;
+    case "peek-card": {
+      const ps = [...el.closest(".card").querySelectorAll(".peek")], show = ps.some(x => !x.classList.contains("on"));
+      ps.forEach(x => peek(x, show));
+      el.innerHTML = ic(show ? "eye-off" : "eye"); el.setAttribute("aria-label", show ? "Esconder valores deste quadro" : "Mostrar valores deste quadro");
+      break;
+    }
+    case "toggle-vals": hideVals = !hideVals; applyHide(); rerender(); toast(hideVals ? "Valores escondidos" : "Valores visíveis"); break;
     case "skin": applySkin(el.dataset.s); store.set("ff_skin", skin); rerender(); toast(`Tema ${SKINS[skin].n} aplicado`); break;
     case "notif": Notification.requestPermission().then(() => { rerender(); notifyDue(); }); break;
     case "ics": { const ics = buildICS(); if (!ics) { toast("Cadastre contas mensais reais para gerar os lembretes."); break; } download("lembretes-contas.ics", ics, "text/calendar"); toast("Abra o arquivo baixado para adicionar ao calendário"); break; }
