@@ -365,8 +365,10 @@ tr.cur td { color: var(--gold-hi); }
 const VAULT_KEY = "ff_vault_v1";
 const LOCK_KEY = "ff_attempts_v1";
 const ITER = 600000; // PBKDF2-SHA256, recomendação OWASP
-// Hash PBKDF2 das credenciais iniciais (Família / Família). A senha não fica no código.
-const DEFAULT_HASH = "ed3eac5fa9d702a4e9a3a33be9048e4b0bcba31b73fc08d78266636337ef7d72";
+// Hash PBKDF2 das credenciais iniciais (Familia / Familia, sem acento). A senha não fica no código.
+const DEFAULT_HASH = "27364ad13a3258feb3e65095ea5d858b0786f4dfa1fb1ef5c843fdebf5f33422";
+// Usuário e senha iniciais da primeira versão (com acento), só para abrir dados criados antes da troca
+const LEGACY_DEFAULT = "Fam\u00edlia";
 const DEFAULT_SALT = "ff-default-v1";
 
 const enc = new TextEncoder(), dec = new TextDecoder();
@@ -397,7 +399,9 @@ const uid = () => Array.from(crypto.getRandomValues(new Uint8Array(8)), b => b.t
 const sum = a => a.reduce((s, v) => s + v, 0);
 const nContas = n => n === 1 ? "1 conta" : `${n} contas`;
 const pct = (a, b) => b > 0 ? a / b : 0;
-const normUser = u => String(u || "").normalize("NFC").trim().toLocaleLowerCase("pt-BR");
+// Usuário ignora maiúsculas e acentos: "Familia", "família" e "FAMILIA" são o mesmo
+const normUser = u => String(u || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("pt-BR");
+const legacyUser = u => String(u || "").normalize("NFC").trim().toLocaleLowerCase("pt-BR");
 const b64e = u8 => { let s = ""; for (let i = 0; i < u8.length; i++) s += String.fromCharCode(u8[i]); return btoa(s); };
 const b64d = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 const store = {
@@ -503,8 +507,8 @@ function applySkin(k) {
 applySkin(skin);
 
 /* ---------- criptografia ---------- */
-async function deriveKey(user, pass, salt, iter = ITER) {
-  const base = await crypto.subtle.importKey("raw", enc.encode(normUser(user) + "\u0000" + String(pass).normalize("NFC")), "PBKDF2", false, ["deriveKey"]);
+async function deriveKey(user, pass, salt, iter = ITER, norm = normUser) {
+  const base = await crypto.subtle.importKey("raw", enc.encode(norm(user) + "\u0000" + String(pass).normalize("NFC")), "PBKDF2", false, ["deriveKey"]);
   return crypto.subtle.deriveKey({ name: "PBKDF2", salt, iterations: iter, hash: "SHA-256" }, base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
 }
 async function checkDefault(user, pass) {
@@ -579,7 +583,7 @@ function seed() {
     E("lazer", "Cinema", 96, 26); if (k % 2) E("outros", "Presente de aniversário", 150, 19);
   }
   return {
-    v: 1, defaultPw: true, user: "família",
+    v: 1, defaultPw: true, user: "familia",
     settings: { income: 9800, reserve: 14500, reserveMonths: 6, lockMin: 5, exIncome: true },
     bills, pays, exps,
     budgets: { mercado: 1500, combustivel: 550, saude: 250, lazer: 300, educacao: 0, outros: 200 },
@@ -691,8 +695,20 @@ async function onLogin(e) {
     } else {
       const vault = JSON.parse(raw);
       SALT = b64d(vault.salt);
-      K = await deriveKey(u, p, SALT, vault.iter || ITER);
-      S = await openWith(K, vault);
+      const it = vault.iter || ITER;
+      try {
+        K = await deriveKey(u, p, SALT, it);
+        S = await openWith(K, vault);
+      } catch {
+        // Dados da primeira versão: usuário guardado com acento; acesso inicial era "Família"
+        const tries = [[u, p]];
+        if (await checkDefault(u, p)) tries.push([LEGACY_DEFAULT, LEGACY_DEFAULT]);
+        for (const [lu, lp] of tries) { try { S = await openWith(await deriveKey(lu, lp, SALT, it, legacyUser), vault); break; } catch {} }
+        if (!S) throw new Error("bad");
+        SALT = crypto.getRandomValues(new Uint8Array(16));
+        K = await deriveKey(u, p, SALT);
+        S.user = normUser(u); save();
+      }
     }
     store.del(LOCK_KEY);
     lastActive = Date.now(); view = "home"; month = ymOf(new Date());
@@ -756,7 +772,7 @@ function exampleBanner() {
 }
 function defaultPwBanner() {
   if (!S.defaultPw) return "";
-  return `<div class="banner" style="border-color:color-mix(in srgb, var(--bad) 45%, transparent);background:color-mix(in srgb, var(--bad) 6%, transparent)"><span>${ic("shield")}<span><b>Troque a senha padrão.</b> “Família” é fácil de adivinhar. Uma senha própria é o que protege os dados.</span></span>
+  return `<div class="banner" style="border-color:color-mix(in srgb, var(--bad) 45%, transparent);background:color-mix(in srgb, var(--bad) 6%, transparent)"><span>${ic("shield")}<span><b>Troque a senha padrão.</b> “Familia” é fácil de adivinhar. Uma senha própria é o que protege os dados.</span></span>
     <button class="btn sm" data-act="nav" data-v="settings">Trocar agora</button></div>`;
 }
 
@@ -1114,7 +1130,7 @@ function changePwForm() {
   sheet(`<h3>Alterar acesso</h3><p class="muted" style="margin:0 0 16px">Use pelo menos 10 caracteres. Uma frase fácil de lembrar funciona bem, como “cafe-da-manha-de-domingo”.</p>
   <form class="form" id="pwForm" novalidate>
     <div class="field"><label for="pwCur">Senha atual</label><input class="input" id="pwCur" type="password" autocomplete="current-password"></div>
-    <div class="field"><label for="pwUser">Usuário</label><input class="input" id="pwUser" autocomplete="username" value="${esc(cap(S.user || "família"))}"></div>
+    <div class="field"><label for="pwUser">Usuário</label><input class="input" id="pwUser" autocomplete="username" value="${esc(cap(S.user || "familia"))}"></div>
     <div class="field"><label for="pwNew">Nova senha</label><input class="input" id="pwNew" type="password" autocomplete="new-password"></div>
     <div class="field"><label for="pwNew2">Repita a nova senha</label><input class="input" id="pwNew2" type="password" autocomplete="new-password"></div>
     <div class="lock-msg" id="pwMsg" style="text-align:left"></div>
@@ -1127,11 +1143,11 @@ function changePwForm() {
       if (!user) return msg.textContent = "Informe o usuário.";
       if (n1.length < 10) return msg.textContent = "A nova senha precisa de pelo menos 10 caracteres.";
       if (n1 !== n2) return msg.textContent = "As duas senhas novas não são iguais.";
-      if (n1.normalize("NFC").toLocaleLowerCase("pt-BR") === "família" || n1.toLowerCase() === "familia") return msg.textContent = "Escolha uma senha diferente da padrão.";
+      if (normUser(n1) === "familia") return msg.textContent = "Escolha uma senha diferente da padrão.";
       btn.disabled = true; btn.textContent = "Protegendo…";
       try {
         const vault = JSON.parse(store.get(VAULT_KEY));
-        const curKey = await deriveKey(S.user || "família", cur, b64d(vault.salt), vault.iter || ITER);
+        const curKey = await deriveKey(S.user || "familia", cur, b64d(vault.salt), vault.iter || ITER);
         await openWith(curKey, vault);
       } catch { btn.disabled = false; btn.textContent = "Salvar novo acesso"; return msg.textContent = "A senha atual está incorreta."; }
       SALT = crypto.getRandomValues(new Uint8Array(16));
@@ -1153,7 +1169,7 @@ function importForm() {
   sheet(`<h3>Restaurar cópia</h3><p class="muted" style="margin:0 0 16px">Escolha o arquivo exportado e digite a senha que estava em uso quando ele foi criado.</p>
   <form class="form" id="impForm" novalidate>
     <div class="field"><label for="iFile">Arquivo de cópia</label><input class="input" id="iFile" type="file" accept=".json,application/json"></div>
-    <div class="field"><label for="iUser">Usuário da cópia</label><input class="input" id="iUser" value="${esc(cap(S.user || "família"))}"></div>
+    <div class="field"><label for="iUser">Usuário da cópia</label><input class="input" id="iUser" value="${esc(cap(S.user || "familia"))}"></div>
     <div class="field"><label for="iPass">Senha da cópia</label><input class="input" id="iPass" type="password"></div>
     <div class="lock-msg" id="iMsg" style="text-align:left"></div>
     <div class="actions"><button type="button" class="btn" data-act="close">Cancelar</button><button class="btn primary" type="submit">Restaurar</button></div>

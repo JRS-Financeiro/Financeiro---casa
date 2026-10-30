@@ -5,7 +5,7 @@ Página teste do app para organizar as contas da casa. É um arquivo único (`in
 ## Como usar
 
 1. Abra o `index.html` no navegador, ou publique no GitHub Pages (Settings → Pages → branch).
-2. Primeiro acesso: usuário **Família**, senha **Família**.
+2. Primeiro acesso: usuário **Familia**, senha **Familia** (sem acento).
 3. Troque a senha em **Ajustes → Segurança** logo depois de entrar.
 4. O app abre com dados de exemplo. Use **Limpar exemplos** para começar com as contas reais.
 
